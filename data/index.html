@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ESP8266 WiFi Watchdog</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;background:#222;color:#eee;margin:12px}
+  h1{margin:6px 0;text-align:center}
+  .controls{display:flex;gap:8px;justify-content:center;margin-bottom:12px}
+  .btn{background:#0b84ff;color:#fff;border:0;padding:8px 12px;border-radius:6px;cursor:pointer}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{padding:8px;border-bottom:1px solid #333;text-align:left;font-size:13px}
+  th{background:#333}
+  .small{font-size:12px;color:#bbb}
+  #log{white-space:pre-wrap; background:#111;padding:8px;border-radius:6px;margin-top:10px;max-height:180px;overflow:auto}
+</style>
+</head>
+<body>
+<h1>WiFi Watchdog Dashboard</h1>
+
+<div class="controls">
+  <button class="btn" onclick="forceScan()">Start Scan</button>
+  <button class="btn" onclick="clearList()">Clear List</button>
+  <div class="small" id="status">Connecting...</div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>MAC Address</th><th>Last seen</th></tr>
+  </thead>
+  <tbody id="devices">
+    <tr><td colspan="2" class="small">No devices yet.</td></tr>
+  </tbody>
+</table>
+
+<div>
+  <h3 class="small">Recent Log</h3>
+  <div id="log" class="small">loading...</div>
+</div>
+
+<script>
+async function apiGet(path){
+  try{
+    const r = await fetch(path, {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return await r.json();
+  }catch(e){
+    console.error(path,e);
+    return null;
+  }
+}
+
+async function updateUI(){
+  const data = await apiGet('/api/status');
+  if(!data){
+    document.getElementById('status').innerText = 'No response';
+    return;
+  }
+  document.getElementById('status').innerText = 'Mode: '+data.mode + ' • last: ' + data.last;
+  const t = document.getElementById('devices');
+  t.innerHTML = '';
+  if(!data.devices || data.devices.length===0){
+    t.innerHTML = '<tr><td colspan="2" class="small">No devices detected.</td></tr>';
+  } else {
+    data.devices.forEach(d=>{
+      const tr = document.createElement('tr');
+      const last = typeof d.lastseen === 'string' ? d.lastseen : (d.lastseen + ' ms');
+      tr.innerHTML = '<td>'+d.mac+'</td><td>'+last+'</td>';
+      t.appendChild(tr);
+    });
+  }
+  const log = data.log ? data.log.replace(/\\n/g,'\n') : '';
+  document.getElementById('log').innerText = log;
+}
+
+async function forceScan(){
+  document.getElementById('status').innerText = 'Triggering scan...';
+  const r = await fetch('/api/scan');
+  if(r && r.ok) {
+    document.getElementById('status').innerText = 'Scan triggered';
+  } else {
+    document.getElementById('status').innerText = 'Scan failed';
+  }
+  await updateUI();
+}
+
+async function clearList(){
+  await fetch('/api/clear');
+  await updateUI();
+}
+
+setInterval(updateUI,1500);
+updateUI();
+</script>
+</body>
+</html>
